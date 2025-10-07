@@ -1,7 +1,3 @@
-
-import token
-
-
 MAX_CONSTANTS = 10
 
 class ParseOutputs:
@@ -29,10 +25,67 @@ class Tokens:
     PRED: int = 10
     COMMA: int = 11
 
+class Token:
+    def __init__(self, tokenType: int, token: str) -> None:
+        self.tokenType: int = tokenType
+        self.token: str = token
+
+
+class ASTNodeType:
+    ATOM: int = 0
+    NEGATION: int = 1
+    QUANTIFIED: int = 2
+    PRED: int = 3
+    CONNECTIVE: int = 4
+
+class Quantifier:
+    EXISTS: int = 0
+    FORALL: int = 1
+
+class Connective:
+    OR: int = 0
+    AND: int = 1
+    IMPLIES: int = 2
+
+
+class ASTNode:
+    def __init__(self, nodeType: int) -> None:
+        self.nodeType: int = nodeType
+        self.fullStr: str = ""
+
+class AtomNode(ASTNode):
+    def __init__(self, token: int) -> None:
+        super().__init__(ASTNodeType.ATOM)
+        self.token = token
+
+class QuantifierNode(ASTNode):
+    def __init__(self, quantifer: int, fmla: ASTNode) -> None:
+        super().__init__(ASTNodeType.QUANTIFIED)
+        self.quantifier: int = quantifer
+        self.fmla: ASTNode = fmla
+
+class ConnectiveNode(ASTNode):
+    def __init__(self, lhs: ASTNode, connective: int, rhs: ASTNode) -> None:
+        super().__init__(ASTNodeType.CONNECTIVE)
+        self.lhs: ASTNode = lhs
+        self.rhs = rhs
+        self.connective = connective
+
+class NegationNode(ASTNode):
+    def __init__(self, fmla: ASTNode) -> None:
+        super().__init__(ASTNodeType.NEGATION)
+        self.fmla: ASTNode = fmla
+
+class PredNode(ASTNode):
+    def __init__(self, args: list[ASTNode]) -> None:
+        super().__init__(ASTNodeType.PRED)
+        self.args = args
+
 def tokenise(fmla: str) -> list[int] | None: 
-    # print(f"tokenising {fmla}")
+    # TODO: store the token itself as a string
 
     tokens: list[int] = []
+    tokens_named: list[Token] = []
     vars = "wxyz"
     props = "pqrs"
     preds = "PQRS"
@@ -49,13 +102,17 @@ def tokenise(fmla: str) -> list[int] | None:
         cur = fmla[idx]
         if cur == '~':
             tokens.append(Tokens.NEGATION)
+            tokens_named.append(Token(Tokens.NEGATION, '~'))
         elif cur == '(':
             tokens.append(Tokens.OPEN_PAREN)
+            tokens_named.append(Token(Tokens.OPEN_PAREN, '('))
         elif cur == ')':
             tokens.append(Tokens.CLOSE_PAREN)
+            tokens_named.append(Token(Tokens.CLOSE_PAREN, ')'))
         elif cur == '\\':
             if peek(idx) == '/':
                 tokens.append(Tokens.OR)
+                tokens_named.append(Token(Tokens.OR, '\\/'))
             else:
                 print(f"Expected /, got {cur} at pos {idx}")
                 return None
@@ -64,6 +121,7 @@ def tokenise(fmla: str) -> list[int] | None:
         elif cur == '/':
             if peek(idx) == '\\':
                 tokens.append(Tokens.AND)
+                tokens_named.append(Token(Tokens.AND, '/\\'))
             else:
                 print(f"Expected \\, got {cur} at pos {idx}")
                 return None
@@ -72,6 +130,7 @@ def tokenise(fmla: str) -> list[int] | None:
         elif cur == '=':
             if peek(idx) == '>':
                 tokens.append(Tokens.IMPLIES)
+                tokens_named.append(Token(Tokens.IMPLIES, '=>'))
             else:
                 print(f"Expected >, got {cur} at pos {idx}")
                 return None
@@ -79,24 +138,160 @@ def tokenise(fmla: str) -> list[int] | None:
             idx += 1
         elif cur == 'E':
             tokens.append(Tokens.EXIST)
+            tokens_named.append(Token(Tokens.EXIST, 'E'))
         elif cur == 'A':
             tokens.append(Tokens.FORALL)
+            tokens_named.append(Token(Tokens.EXIST, 'A'))
 
         elif cur in preds:
             tokens.append(Tokens.PRED)
+            tokens_named.append(Token(Tokens.PRED, cur))
         elif cur in vars:
             tokens.append(Tokens.VAR)
+            tokens_named.append(Token(Tokens.VAR, cur))
         elif cur in props:
             tokens.append(Tokens.PROP)
+            tokens_named.append(Token(Tokens.PROP, cur))
         elif cur == ',':
             tokens.append(Tokens.COMMA)
+            tokens_named.append(Token(Tokens.COMMA, ','))
         else:
             print(f"Unknown char{cur}")
             return None
 
         idx += 1
 
+    # return tokens_named
     return tokens
+
+class Parser:
+    def __init__(self, tokens: list[int]) -> None:
+        self.idx: int = 0
+        self.tokens: list[int] = tokens
+        self.len: int = len(tokens)
+        self.valid = True
+        self.ast = self.parse()
+        if self.idx < self.len:
+            print(f"Parsing complete, but idx at {self.idx}, less than {self.len}")
+            self.valid = False
+        self.isFOL = False
+
+    def peek(self) -> int | None:
+        if self.idx + 1 >= self.len:
+            return None
+
+        return self.tokens[self.idx + 1]
+
+    def consume(self, count: int = 1) -> None:
+        self.idx += count
+
+
+    def match(self, token: int) -> bool:
+        if self.idx >= self.len:
+            print("Unexpected EOF")
+            self.valid = False
+            return False
+        return self.tokens[self.idx] == token
+
+
+    def match_peek(self, token: int) -> bool:
+        if self.idx >= self.len or self.peek() is None:
+            print("Unexpected EOF")
+            self.valid = False
+            return False
+        return self.peek() == token
+
+
+    def parse(self) -> ASTNode:
+        if (self.idx >= self.len):
+            print("Unexpected EOF")
+            self.valid = False
+            return ASTNode(0)
+        cur = self.tokens[self.idx]
+        # print(f"idx: {self.idx} cur: {cur}")
+
+        match (cur):
+            case Tokens.NEGATION:
+                self.consume()
+                return NegationNode(self.parse())
+
+            case Tokens.EXIST | Tokens.FORALL:
+                if not self.match_peek(Tokens.VAR):
+                    print(f"Expected VAR, got {self.peek()}")
+                    self.valid = False
+                    return ASTNode(0)
+                #
+                # if self.peek() != Tokens.VAR:
+                #     print(f"Expected VAR, got {self.peek()}")
+                #     self.valid = False
+                #     return ASTNode(0)
+
+                self.isFOL = True
+
+                self.consume(2)
+                quantifier = Quantifier.EXISTS if cur == Tokens.EXIST else Quantifier.FORALL
+                return QuantifierNode(quantifier, self.parse())
+
+            case Tokens.OPEN_PAREN:
+                self.consume()
+                lhs = self.parse()
+
+                connective = self.tokens[self.idx]
+                connectives = [Tokens.OR, Tokens.AND, Tokens.IMPLIES]
+
+                if connective not in connectives:
+                    print(f"Expected connective, got {connective}")
+                    self.valid = False
+                    return ASTNode(0)
+
+                self.consume()
+                rhs = self.parse()
+
+                if not self.match(Tokens.CLOSE_PAREN):
+                    print(f"Expected CLOSE_PAREN, got {self.peek()}")
+                    self.valid = False
+                    return ASTNode(0)
+
+                self.consume()
+
+                # TODO: make this the right connectvie
+
+                return ConnectiveNode(lhs, connective, rhs)
+
+            case Tokens.PRED:
+                if self.peek() != Tokens.OPEN_PAREN:
+                    self.valid = False
+                    print(f"Expected OPEN_PAREN, got {self.peek()}")
+                    return ASTNode(0)
+
+                self.consume()
+
+                args: list[ASTNode] = []
+
+                while True:
+                    self.consume()
+                    args.append(self.parse())
+                    if self.tokens[self.idx] == Tokens.COMMA:
+                        continue
+                    break
+
+                if not self.match(Tokens.CLOSE_PAREN):
+                    self.valid = False
+                    print(f"Expected CLOSE_PAREN (PRED), got {self.tokens[self.idx]}")
+                    return ASTNode(0)
+
+                self.consume()
+
+                return PredNode(args)
+
+            case Tokens.PROP | Tokens.VAR:
+                self.consume()
+                return AtomNode(cur)
+
+            case _:
+                print(f"Unexpected token: {cur}")
+                self.valid = False
+                return ASTNode(0)
 
 
 
@@ -107,108 +302,44 @@ def parse(fmla: str):
     if tokens is None:
         return ParseOutputs.NOT_FORMULA
 
-    # Parse the tokens
-    # print(tokens)
+    parser = Parser(tokens)
 
-    stack: list[int] = [] # Keep track of seen tokens
-
-    # Helpers
-    def peek(idx: int) -> int | None:
-        if (idx + 1 >= len(fmla)):
-            return None
-        
-        return tokens[idx + 1]
-
-    def last() -> int | None:
-        if len(stack) == 0:
-            return None
-        return stack[len(stack) - 1]
-
-    fol = False
-
-    idx = 0
-    while idx < len(tokens):
-        cur = tokens[idx]
-        # print(stack)
-
-        if cur == Tokens.OPEN_PAREN:
-            stack.append(cur)
-        elif cur == Tokens.CLOSE_PAREN: # Signals end of either a parenthesis (a binary connective) or a predicate
-            if last() == Tokens.PRED:
-                _ = stack.pop()
-            elif last() == Tokens.AND or last() == Tokens.OR or last() == Tokens.IMPLIES:
-                _ = stack.pop()
-                _ = stack.pop()
-            else:
-                print(f"Unexpected close parenthesis?")
-                return ParseOutputs.NOT_FORMULA
-
-        elif cur == Tokens.PRED:
-            stack.append(cur)
-            if peek(idx) != Tokens.OPEN_PAREN:
-                print(f"Expected OPEN_PAREN, got {cur}")
-                return ParseOutputs.NOT_FORMULA
-
-            idx += 1
-
-        elif cur == Tokens.EXIST or cur == Tokens.FORALL:
-            fol = True
-
-            if peek(idx) != Tokens.VAR:
-                print(f"Expected VAR, got {cur}")
-                return ParseOutputs.NOT_FORMULA
-
-            idx += 1 # Just parse for formula
-
-        elif cur == Tokens.OR:
-            if last() != Tokens.OPEN_PAREN:
-                print(f"Unexpected OR... Missing open parenthesis?")
-                return ParseOutputs.NOT_FORMULA
-
-            stack.append(cur)
-
-        elif cur == Tokens.AND:
-            if last() != Tokens.OPEN_PAREN:
-                print(f"Unexpected AND... Missing open parenthesis?")
-                return ParseOutputs.NOT_FORMULA
-
-            stack.append(cur)
-
-        elif cur == Tokens.IMPLIES:
-            if last() != Tokens.OPEN_PAREN:
-                print(f"Unexpected IMPLIES... Missing open parenthesis?")
-                return ParseOutputs.NOT_FORMULA
-
-            stack.append(cur)
-
-        idx += 1
-
-    if len(stack) > 0:
-        print("Unexpected EOF?")
+    if not parser.valid:
         return ParseOutputs.NOT_FORMULA
-    if len(tokens) == 1:
-        return ParseOutputs.ATOM
-    if tokens[0] == Tokens.FORALL:
-        return ParseOutputs.UNI_QUANTIFIED
-    elif tokens[0] == Tokens.EXIST:
-        return ParseOutputs.EXS_QUANTIFIED
 
+    match parser.ast.nodeType:
+        case ASTNodeType.ATOM:
+            return ParseOutputs.ATOM
+        case ASTNodeType.NEGATION:
+            if parser.isFOL:
+                return ParseOutputs.FOL_NEGATION
+            return ParseOutputs.PROP_NEGATION
+        case ASTNodeType.QUANTIFIED:
+            assert(isinstance(parser.ast, QuantifierNode))
 
-    return ParseOutputs.NOT_FORMULA
+            if parser.ast.quantifier == Quantifier.FORALL:
+                return ParseOutputs.UNI_QUANTIFIED
+            return ParseOutputs.EXS_QUANTIFIED
+        case ASTNodeType.CONNECTIVE:
+            if parser.isFOL:
+                return ParseOutputs.BIN_FOL
+            return ParseOutputs.BIN_PROP
+
+        case ASTNodeType.ATOM:
+            assert(isinstance(parser.ast, AtomNode))
+
+            if parser.ast.token == Tokens.PROP:
+                return ParseOutputs.PROPOSITION
+
+            return ParseOutputs.NOT_FORMULA
+
+        case _:
+            return ParseOutputs.NOT_FORMULA
+
 
 # Return the LHS of a binary connective formula
 def lhs(fmla: str):
-    parenCount: int = 0
-
-    for idx in range(len(fmla)):
-        if fmla[idx] == '(':
-            parenCount += 1
-        elif fmla[idx] == ')':
-            parenCount -= 1
-
-
-
-
+    
 
     return ''
 
