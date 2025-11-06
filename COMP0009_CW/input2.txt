@@ -1,2 +1,6 @@
-PARSE
-P(x)
+PARSE SAT
+(p&~p)
+~(p->(q->p))
+(~~~p\/(q&~q))
+~~~~~~~~~~~q
+AxAyP(x,y)

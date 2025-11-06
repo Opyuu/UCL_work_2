@@ -37,12 +37,15 @@ class Token:
     def __str__(self) -> str:
         return f"Token({self.token}, {self.tokenType})"
 
+    def copy(self):
+        return Token(self.tokenType, self.token)
+
 class ASTNodeType:
-    ATOM: int = 0
-    NEGATION: int = 1
-    QUANTIFIED: int = 2
-    PRED: int = 3
-    CONNECTIVE: int = 4
+    QUANTIFIED: int = 0
+    PRED: int = 1
+    CONNECTIVE: int = 2
+    NEGATION: int = 3
+    ATOM: int = 4
 
 class Quantifier:
     EXISTS: int = 0
@@ -54,16 +57,59 @@ class ASTNode:
         self.nodeType: int = nodeType
         self.fullStr: str = fullStr
 
+    @override
+    def __eq__(self, value) -> bool:
+        return self.fullStr == value.fullStr
+
+    @override
+    def __str__(self) -> str:
+        return self.fullStr
+
+    @override
+    def __repr__(self) -> str:
+        return self.__str__()
+
+    def copy(self):
+        return ASTNode(self.nodeType, self.fullStr)
+
 class AtomNode(ASTNode):
     def __init__(self, token: int, fullStr: str) -> None:
         super().__init__(ASTNodeType.ATOM, fullStr)
         self.token: int = token
 
+    @override
+    def copy(self):
+        return AtomNode(self.token, self.fullStr)
+
+    @override
+    def __eq__(self, other: ASTNode):
+        if not isinstance(other, AtomNode):
+            return False
+        
+        return self.token == other.token and self.fullStr == other.fullStr
+
 class QuantifierNode(ASTNode):
-    def __init__(self, quantifer: int, fmla: ASTNode, fullStr: str) -> None:
+    def __init__(self, quantifer: int, fmla: ASTNode, var: str, fullStr: str) -> None:
         super().__init__(ASTNodeType.QUANTIFIED, fullStr)
         self.quantifier: int = quantifer
+        self.var = var
         self.fmla: ASTNode = fmla
+        self.usedConstants: list[str] = []
+
+    @override
+    def copy(self):
+        return QuantifierNode(self.quantifier, self.fmla.copy(), self.var, self.fullStr)
+
+    @override
+    def __eq__(self, other: ASTNode):
+        if not isinstance(other, QuantifierNode):
+            return False
+        return self.quantifier == other.quantifier and self.var == other.var and self.fmla == other.fmla
+
+    @override
+    def __str__(self):
+        quantifier = "E" if self.quantifier == Quantifier.EXISTS else "A"
+        return quantifier + self.var + self.fmla.__str__()
 
 class ConnectiveNode(ASTNode):
     def __init__(self, lhs: ASTNode, connective: Token, rhs: ASTNode, fullStr: str) -> None:
@@ -72,15 +118,64 @@ class ConnectiveNode(ASTNode):
         self.rhs: ASTNode = rhs
         self.connective: Token = connective
 
+    @override
+    def copy(self):
+        return ConnectiveNode(self.lhs.copy(), self.connective.copy(), self.rhs.copy(), self.fullStr)
+
+    @override
+    def __eq__(self, other: ASTNode):
+        if not isinstance(other, ConnectiveNode):
+            return False
+
+        return self.lhs == other.lhs and self.connective == other.connective and self.rhs == other.rhs
+
+    @override
+    def __str__(self) -> str:
+        return self.lhs.__str__() + self.connective.token + self.rhs.__str__()
+
 class NegationNode(ASTNode):
     def __init__(self, fmla: ASTNode, fullStr: str) -> None:
         super().__init__(ASTNodeType.NEGATION, fullStr)
         self.fmla: ASTNode = fmla
+        
+    @override
+    def copy(self):
+        return NegationNode(self.fmla.copy(), self.fullStr)
+
+    @override
+    def __eq__(self, other: ASTNode):
+        if not isinstance(other, NegationNode):
+            return False
+
+        return self.fmla == other.fmla
+
+    @override
+    def __str__(self) -> str:
+        return "~" + self.fmla.__str__()
 
 class PredNode(ASTNode):
-    def __init__(self, args: list[ASTNode], fullStr: str) -> None:
+    def __init__(self, args: list[ASTNode], fnSymbol: str, fullStr: str) -> None:
         super().__init__(ASTNodeType.PRED, fullStr)
         self.args: list[ASTNode] = args
+        self.fnSymbol = fnSymbol
+
+    @override
+    def copy(self):
+        return PredNode([a.copy() for a in self.args], self.fnSymbol, self.fullStr)
+
+    @override
+    def __eq__(self, other: ASTNode):
+        if not isinstance(other, PredNode):
+            return False
+
+        return self.args == other.args
+
+    @override
+    def __str__(self) -> str:
+        args = ""
+        for arg in self.args:
+            args += f"{arg},"
+        return self.fnSymbol + "(" + args + ")"
 
 def tokenise(fmla: str) -> list[Token] | None: 
     tokens: list[Token] = []
@@ -112,17 +207,11 @@ def tokenise(fmla: str) -> list[Token] | None:
                 return None
 
             idx += 1
-        elif cur == '/':
-            if peek(idx) == '\\':
-                tokens.append(Token(Tokens.AND, '/\\'))
-            else:
-                print(f"Expected \\, got {cur} at pos {idx}")
-                return None
-
-            idx += 1
-        elif cur == '=':
+        elif cur == '&':
+            tokens.append(Token(Tokens.AND, "&"))
+        elif cur == '-':
             if peek(idx) == '>':
-                tokens.append(Token(Tokens.IMPLIES, '=>'))
+                tokens.append(Token(Tokens.IMPLIES, '->'))
             else:
                 print(f"Expected >, got {cur} at pos {idx}")
                 return None
@@ -131,7 +220,7 @@ def tokenise(fmla: str) -> list[Token] | None:
         elif cur == 'E':
             tokens.append(Token(Tokens.EXIST, 'E'))
         elif cur == 'A':
-            tokens.append(Token(Tokens.EXIST, 'A'))
+            tokens.append(Token(Tokens.FORALL, 'A'))
 
         elif cur in preds:
             tokens.append(Token(Tokens.PRED, cur))
@@ -142,7 +231,7 @@ def tokenise(fmla: str) -> list[Token] | None:
         elif cur == ',':
             tokens.append(Token(Tokens.COMMA, ','))
         else:
-            print(f"Unknown char{cur}")
+            print(f"Unexpected char{cur}")
             return None
 
         idx += 1
@@ -217,7 +306,7 @@ class Parser:
                 self.consume(2)
                 quantifier = Quantifier.EXISTS if cur.tokenType == Tokens.EXIST else Quantifier.FORALL
                 res = self.parse()
-                return QuantifierNode(quantifier, res, cur.token + var.token + res.fullStr)
+                return QuantifierNode(quantifier, res, var.token, cur.token + var.token + res.fullStr)
 
             case Tokens.OPEN_PAREN:
                 self.consume()
@@ -241,9 +330,6 @@ class Parser:
 
                 self.consume()
 
-                # TODO: make this the right connectvie
-
-
                 return ConnectiveNode(lhs, connective, rhs, 
                     cur.token + lhs.fullStr + connective.token + rhs.fullStr + ')'
                 )
@@ -252,7 +338,7 @@ class Parser:
                 peek = self.peek()
                 if peek is None or peek.tokenType != Tokens.OPEN_PAREN:
                     self.valid = False
-                    print(f"Expected OPEN_PAREN, got {self.peek()}")
+                    print(f"Expected OPEN_PAREN, got {peek}")
                     return ASTNode(0)
 
                 self.consume()
@@ -279,7 +365,7 @@ class Parser:
                 self.consume()
                 s += ')'
 
-                return PredNode(args, s)
+                return PredNode(args, cur.token[0],s)
 
             case Tokens.PROP | Tokens.VAR:
                 self.consume()
@@ -365,13 +451,249 @@ def rhs(fmla):
     return parser.ast.rhs.fullStr
 
 
+class TablaeuTree:
+    def __init__(self, node: ASTNode | None) -> None:
+        self.nodes: list[ASTNode] = [] # Maybe use a tablaeu node? but we don't need to store if it's checked - simply not push
+        self.posLiterals: list[ASTNode] = []
+        self.negLiterals: list[ASTNode] = []
+        self.seenAtoms: list[str] = []
+        self.nextConstant: str = "c"
+        self.dormantGammas: list[QuantifierNode] = []
+
+        if node is not None:
+            self.push(node)
+
+    def next_expansion(self):
+        highestPriority = self.nodes[0].nodeType
+        highestIdx = 0
+
+        for i in range(len(self.nodes)):
+            cur = self.nodes[i]
+            if cur.nodeType > highestPriority:
+                highestPriority = cur.nodeType
+                highestIdx = i
+
+        return self.nodes[highestIdx]
+
+    def mark(self):
+        _ = self.nodes.pop(0)
+
+    def expanded(self) -> bool:
+        return len(self.nodes) == 0
+
+    def new_constant(self) -> str:
+        ret = self.nextConstant
+        self.nextConstant += "c"
+        self.seenAtoms.append(ret)
+        for node in self.dormantGammas: # Reactivate gammas when expansions are needed again
+            self.nodes.append(node)
+        return ret
+
+    def any_constant(self, usedConstants: list[str]):
+        for i in range(len(self.seenAtoms)):
+            if self.seenAtoms[i] not in usedConstants:
+                return self.seenAtoms[i]
+
+        return ""
+
+    def contradiction(self) -> bool:
+        for node in self.posLiterals:
+            for nNode in self.negLiterals:
+                if node == nNode:
+                    return True
+        return False
+
+    def push(self, node: ASTNode):
+        # Check if it's an atom
+        workingNode = node
+        isNegation = False
+        if isinstance(node, NegationNode):
+            workingNode = node.fmla
+            isNegation = True
+
+        if workingNode.nodeType == ASTNodeType.ATOM or workingNode.nodeType == ASTNodeType.PRED:
+            if isNegation:
+                self.negLiterals.append(workingNode)
+            else:
+                self.posLiterals.append(workingNode)
+
+            self.seenAtoms.append(workingNode.fullStr)
+        else:
+            self.nodes.append(node)
+
+        # print(f"Pushing: {node}")
+
+        # print("Current queue:")
+        # print(self.nodes)
+        # print(self.negLiterals)
+        # print(self.posLiterals)
+
+    def clone(self):
+        ret = TablaeuTree(None)
+        ret.nodes = [a.copy() for a in self.nodes]
+        ret.posLiterals = [a.copy() for a in self.posLiterals]
+        ret.negLiterals = [a.copy() for a in self.negLiterals]
+
+        return ret
+
 # You may choose to represent a theory as a set or a list
-def theory(fmla):#initialise a theory with a single formula in it
-    return None
+def theory(fmla: str):#initialise a theory with a single formula in it
+    tokens = tokenise(fmla)
+    assert(tokens is not None)
+    return TablaeuTree(Parser(tokens).ast)
+
+
+def replace(original: str, to: str, node: ASTNode):
+    if isinstance(node, AtomNode) and node.fullStr == original:
+        if node.token != Tokens.VAR:
+            print("wtf")
+        node.fullStr = to
+
+    elif isinstance(node, PredNode):
+        for arg in node.args:
+            replace(original, to, arg)
+
+    elif isinstance(node, ConnectiveNode):
+        replace(original, to, node.lhs)
+        replace(original, to, node.rhs)
+
+    elif isinstance(node, NegationNode):
+        replace(original, to, node.fmla)
+
+    elif isinstance(node, QuantifierNode):
+        if node.var == original:
+            print(f"Replacing {original} with {to}, but variable reencounted as quantifier {node}?")
+
+        # replace(original, to, node.fmla)
+
+
+def is_alpha(node: ASTNode) -> tuple[bool, list[ASTNode]]:
+    if isinstance(node, ConnectiveNode) and node.connective.tokenType == Tokens.AND:
+        return True, [node.lhs, node.rhs]
+
+    if isinstance(node, NegationNode):
+        inner = node.fmla
+        if isinstance(inner, ConnectiveNode):
+            if inner.connective.tokenType == Tokens.OR:
+                return True, [NegationNode(inner.lhs, "~" + inner.rhs.fullStr), NegationNode(inner.rhs, "~" + inner.rhs.fullStr)]
+            elif inner.connective.tokenType == Tokens.IMPLIES:
+                return True, [inner.lhs, NegationNode(inner.rhs, "~" + inner.rhs.fullStr)]
+
+        elif isinstance(inner, NegationNode):
+            return True, [inner.fmla]
+
+    return False, []
+
+def is_beta(node: ASTNode) -> tuple[bool, list[ASTNode]]:
+    if isinstance(node, ConnectiveNode):
+        if node.connective.tokenType == Tokens.OR:
+            return True, [node.lhs, node.rhs]
+        elif node.connective.tokenType == Tokens.IMPLIES:
+            return True, [NegationNode(node.lhs, "~" + node.lhs.fullStr)]
+
+    elif isinstance(node, NegationNode):
+        inner = node.fmla
+        if isinstance(inner, ConnectiveNode) and inner.connective.tokenType == Tokens.AND:
+            return True, [NegationNode(inner.lhs, "~" + inner.rhs.fullStr), NegationNode(inner.rhs, "~" + inner.rhs.fullStr)]
+
+    return False, []
+
+def is_gamma(node: ASTNode) -> tuple[bool, QuantifierNode, ASTNode]:
+    if isinstance(node, QuantifierNode):
+        if node.quantifier == Quantifier.FORALL:
+            return True, node, node.fmla
+
+    if isinstance(node, NegationNode):
+        inner = node.fmla
+        if isinstance(inner, QuantifierNode) and inner.quantifier == Quantifier.EXISTS:
+            return True, inner, NegationNode(inner.fmla, inner.fmla.fullStr)
+
+    return False, QuantifierNode(0, ASTNode(0, ""), "", ""), ASTNode(0)
+
+def is_delta(node: ASTNode) -> tuple[bool, str, ASTNode]:
+    # existential
+    if isinstance(node, QuantifierNode):
+        if node.quantifier == Quantifier.EXISTS:
+            return True, node.var, node.fmla
+
+    if isinstance(node, NegationNode):
+        inner = node.fmla
+        if isinstance(inner, QuantifierNode) and inner.quantifier == Quantifier.FORALL:
+            return True, inner.var, NegationNode(inner.fmla, inner.fmla.fullStr)
+
+    return False, "", ASTNode(0)
 
 #check for satisfiability
-def sat(tableau):
-#output 0 if not satisfiable, output 1 if satisfiable, output 2 if number of constants exceeds MAX_CONSTANTS
+def sat(tableau: list[TablaeuTree]):
+#output 0 if not satisfiable, output 1 if satisfiable, output 2 if number of constants exceeds MAX_CONSTANT
+    while len(tableau):
+        branch = tableau.pop(0)
+
+        if len(branch.nextConstant) > MAX_CONSTANTS:
+            return 2
+
+        if not branch.contradiction() and branch.expanded():
+            return 1
+
+        node = branch.next_expansion()
+
+        # print(f"Expanding node {node}")
+
+        # alpha
+        isAlpha, fmlas = is_alpha(node)
+        if isAlpha:
+            for fmla in fmlas:
+                branch.push(fmla)
+
+            branch.mark()
+            if not branch.contradiction():
+                tableau.append(branch)
+
+        isBeta, fmlas = is_beta(node)
+        if isBeta:
+            for fmla in fmlas:
+                working = branch.clone()
+                working.push(fmla)
+
+                working.mark()
+                if not working.contradiction():
+                    tableau.append(working)
+
+        isGamma, quantifier, fmla = is_gamma(node)
+        if isGamma:
+            replaceFrom, replaceTo = quantifier.var, branch.any_constant(quantifier.usedConstants)
+
+            if replaceTo == "":
+                branch.dormantGammas.append(quantifier)
+                branch.mark()
+                if not branch.contradiction():
+                    tableau.append(branch)
+            else:
+                quantifier.usedConstants.append(replaceTo)
+
+                fmlaCopy = fmla.copy()
+
+                replace(replaceFrom, replaceTo, fmlaCopy)
+                branch.push(fmlaCopy)
+
+                if not branch.contradiction():
+                    tableau.append(branch)
+
+        isDelta, var, fmla = is_delta(node)
+        if isDelta:
+            replaceFrom, replaceTo = var, branch.new_constant()
+
+            replace(replaceFrom, replaceTo, fmla)
+            
+            branch.push(fmla)
+            branch.mark()
+
+            if not branch.contradiction():
+                tableau.append(branch)
+
+
+        # TODO: all the different types of expanding
+
     return 0
 
 #------------------------------------------------------------------------------------------------------------------------------:
