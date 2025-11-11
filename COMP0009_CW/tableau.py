@@ -475,6 +475,10 @@ class TablaeuTree:
 
         return self.nodes[highestIdx]
 
+    def activate_dormants(self):
+        for node in self.dormantGammas: # Reactivate gammas when expansions are needed again
+            self.nodes.append(node)
+
     def mark(self):
         _ = self.nodes.pop(0)
 
@@ -485,8 +489,7 @@ class TablaeuTree:
         ret = self.nextConstant
         self.nextConstant += "c"
         self.seenAtoms.append(ret)
-        for node in self.dormantGammas: # Reactivate gammas when expansions are needed again
-            self.nodes.append(node)
+        self.activate_dormants()
         return ret
 
     def any_constant(self, usedConstants: list[str]):
@@ -518,6 +521,7 @@ class TablaeuTree:
                 self.posLiterals.append(workingNode)
 
             self.seenAtoms.append(workingNode.fullStr)
+            self.activate_dormants()
         else:
             self.nodes.append(node)
 
