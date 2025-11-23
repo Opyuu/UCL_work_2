@@ -106,7 +106,7 @@ class QuantifierNode(ASTNode):
     
     def __str__(self):
         quantifier = "E" if self.quantifier == Quantifier.EXISTS else "A"
-        return quantifier + self.var + self.fmla.__str__()
+        return quantifier + self.var + "<" + self.fmla.__str__() + ">"
 
 class ConnectiveNode(ASTNode):
     def __init__(self, lhs: ASTNode, connective: Token, rhs: ASTNode, fullStr: str) -> None:
@@ -128,7 +128,7 @@ class ConnectiveNode(ASTNode):
 
     
     def __str__(self) -> str:
-        return self.lhs.__str__() + self.connective.token + self.rhs.__str__()
+        return "(" + self.lhs.__str__() + self.connective.token + self.rhs.__str__() + ")"
 
 class NegationNode(ASTNode):
     def __init__(self, fmla: ASTNode, fullStr: str) -> None:
@@ -148,7 +148,7 @@ class NegationNode(ASTNode):
 
     
     def __str__(self) -> str:
-        return "~" + self.fmla.__str__()
+        return "~<" + self.fmla.__str__() + ">"
 
 class PredNode(ASTNode):
     def __init__(self, args: list[ASTNode], fnSymbol: str, fullStr: str) -> None:
@@ -172,7 +172,7 @@ class PredNode(ASTNode):
         args = ""
         for arg in self.args:
             args += f"{arg},"
-        return self.fnSymbol + "(" + args + ")"
+        return self.fnSymbol + "(" + args + ") "
 
 def tokenise(fmla: str): 
     tokens: list[Token] = []
@@ -504,14 +504,14 @@ class TablaeuTree:
                 highestPriority = cur.nodeType
                 highestIdx = i
 
-        return self.nodes[highestIdx]
+        return self.nodes[highestIdx], highestIdx
 
     def activate_dormants(self):
         for node in self.dormantGammas: # Reactivate gammas when expansions are needed again
             self.nodes.append(node)
 
-    def mark(self):
-        _ = self.nodes.pop(0)
+    def mark(self, idx):
+        _ = self.nodes.pop(idx)
 
     def expanded(self) -> bool:
         return len(self.nodes) == 0
@@ -524,10 +524,9 @@ class TablaeuTree:
         return ret
 
     def any_constant(self, usedConstants: list[str]):
-        for i in range(len(self.seenAtoms)):
-            if self.seenAtoms[i] not in usedConstants:
-                return self.seenAtoms[i]
-
+        for i in self.seenAtoms:
+            if i not in usedConstants:
+                return i
         return ""
 
     def contradiction(self) -> bool:
@@ -550,9 +549,6 @@ class TablaeuTree:
                 self.negLiterals.append(workingNode)
             else:
                 self.posLiterals.append(workingNode)
-
-            self.seenAtoms.append(workingNode.fullStr)
-            self.activate_dormants()
         else:
             self.nodes.append(node)
 
@@ -663,8 +659,15 @@ def is_delta(node: ASTNode) -> tuple[bool, str, ASTNode]:
 #check for satisfiability
 def sat(tableau: list[TablaeuTree]):
 #output 0 if not satisfiable, output 1 if satisfiable, output 2 if number of constants exceeds MAX_CONSTANT
+    iter = 0
     while len(tableau):
         branch = tableau.pop(0)
+
+        # if (iter > 20):
+        #     print("max recur limt")
+        #     break
+        # else:
+        #     iter += 1
 
         if len(branch.nextConstant) > MAX_CONSTANTS:
             return 2
@@ -672,17 +675,18 @@ def sat(tableau: list[TablaeuTree]):
         if not branch.contradiction() and branch.expanded():
             return 1
 
-        node = branch.next_expansion()
+        node, idx = branch.next_expansion()
 
         # print(f"Expanding node {node}")
 
         # alpha
         isAlpha, fmlas = is_alpha(node)
         if isAlpha:
+            branch.mark(idx)
+
             for fmla in fmlas:
                 branch.push(fmla)
 
-            branch.mark()
             if not branch.contradiction():
                 tableau.append(branch)
 
@@ -690,9 +694,9 @@ def sat(tableau: list[TablaeuTree]):
         if isBeta:
             for fmla in fmlas:
                 working = branch.clone()
+                working.mark(idx)
                 working.push(fmla)
 
-                working.mark()
                 if not working.contradiction():
                     tableau.append(working)
 
@@ -701,11 +705,12 @@ def sat(tableau: list[TablaeuTree]):
             replaceFrom, replaceTo = quantifier.var, branch.any_constant(quantifier.usedConstants)
 
             if replaceTo == "":
+                branch.mark(idx)
                 branch.dormantGammas.append(quantifier)
-                branch.mark()
                 if not branch.contradiction():
                     tableau.append(branch)
             else:
+                # print("Expanding with constant ", replaceTo)
                 quantifier.usedConstants.append(replaceTo)
 
                 fmlaCopy = fmla.copy()
@@ -722,12 +727,14 @@ def sat(tableau: list[TablaeuTree]):
 
             replace(replaceFrom, replaceTo, fmla)
             
+            branch.mark(idx)
             branch.push(fmla)
-            branch.mark()
 
             if not branch.contradiction():
                 tableau.append(branch)
 
+        if not isDelta and not isGamma and not isBeta and not isAlpha:
+            raise RuntimeError("?")
 
         # TODO: all the different types of expanding
 
