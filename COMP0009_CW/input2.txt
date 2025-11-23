@@ -1,6 +1,2 @@
-PARSE SAT
-(p&~p)
-~(p->(q->p))
-(~~~p\/(q&~q))
-~~~~~~~~~~~q
-AxAyP(x,y)
+PARSE
+(Ax(P(x,x)&~P(x,x))&ExQ(x,x))

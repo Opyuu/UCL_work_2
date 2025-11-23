@@ -1,6 +1,3 @@
-from typing import override
-
-
 MAX_CONSTANTS = 10
 
 class ParseOutputs:
@@ -33,7 +30,7 @@ class Token:
         self.tokenType: int = tokenType
         self.token: str = token
 
-    @override
+    
     def __str__(self) -> str:
         return f"Token({self.token}, {self.tokenType})"
 
@@ -57,15 +54,15 @@ class ASTNode:
         self.nodeType: int = nodeType
         self.fullStr: str = fullStr
 
-    @override
+    
     def __eq__(self, value) -> bool:
         return self.fullStr == value.fullStr
 
-    @override
+    
     def __str__(self) -> str:
         return self.fullStr
 
-    @override
+    
     def __repr__(self) -> str:
         return self.__str__()
 
@@ -77,11 +74,11 @@ class AtomNode(ASTNode):
         super().__init__(ASTNodeType.ATOM, fullStr)
         self.token: int = token
 
-    @override
+    
     def copy(self):
         return AtomNode(self.token, self.fullStr)
 
-    @override
+    
     def __eq__(self, other: ASTNode):
         if not isinstance(other, AtomNode):
             return False
@@ -96,17 +93,17 @@ class QuantifierNode(ASTNode):
         self.fmla: ASTNode = fmla
         self.usedConstants: list[str] = []
 
-    @override
+    
     def copy(self):
         return QuantifierNode(self.quantifier, self.fmla.copy(), self.var, self.fullStr)
 
-    @override
+    
     def __eq__(self, other: ASTNode):
         if not isinstance(other, QuantifierNode):
             return False
         return self.quantifier == other.quantifier and self.var == other.var and self.fmla == other.fmla
 
-    @override
+    
     def __str__(self):
         quantifier = "E" if self.quantifier == Quantifier.EXISTS else "A"
         return quantifier + self.var + self.fmla.__str__()
@@ -118,18 +115,18 @@ class ConnectiveNode(ASTNode):
         self.rhs: ASTNode = rhs
         self.connective: Token = connective
 
-    @override
+    
     def copy(self):
         return ConnectiveNode(self.lhs.copy(), self.connective.copy(), self.rhs.copy(), self.fullStr)
 
-    @override
+    
     def __eq__(self, other: ASTNode):
         if not isinstance(other, ConnectiveNode):
             return False
 
         return self.lhs == other.lhs and self.connective == other.connective and self.rhs == other.rhs
 
-    @override
+    
     def __str__(self) -> str:
         return self.lhs.__str__() + self.connective.token + self.rhs.__str__()
 
@@ -138,18 +135,18 @@ class NegationNode(ASTNode):
         super().__init__(ASTNodeType.NEGATION, fullStr)
         self.fmla: ASTNode = fmla
         
-    @override
+    
     def copy(self):
         return NegationNode(self.fmla.copy(), self.fullStr)
 
-    @override
+    
     def __eq__(self, other: ASTNode):
         if not isinstance(other, NegationNode):
             return False
 
         return self.fmla == other.fmla
 
-    @override
+    
     def __str__(self) -> str:
         return "~" + self.fmla.__str__()
 
@@ -159,31 +156,31 @@ class PredNode(ASTNode):
         self.args: list[ASTNode] = args
         self.fnSymbol = fnSymbol
 
-    @override
+    
     def copy(self):
         return PredNode([a.copy() for a in self.args], self.fnSymbol, self.fullStr)
 
-    @override
+    
     def __eq__(self, other: ASTNode):
         if not isinstance(other, PredNode):
             return False
 
         return self.args == other.args
 
-    @override
+    
     def __str__(self) -> str:
         args = ""
         for arg in self.args:
             args += f"{arg},"
         return self.fnSymbol + "(" + args + ")"
 
-def tokenise(fmla: str) -> list[Token] | None: 
+def tokenise(fmla: str): 
     tokens: list[Token] = []
     vars = "wxyz"
     props = "pqrs"
     preds = "PQRS"
 
-    def peek(idx: int) -> str | None:
+    def peek(idx: int):
         if (idx + 1 >= len(fmla)):
             return None
         
@@ -203,7 +200,7 @@ def tokenise(fmla: str) -> list[Token] | None:
             if peek(idx) == '/':
                 tokens.append(Token(Tokens.OR, '\\/'))
             else:
-                print(f"Expected /, got {cur} at pos {idx}")
+                # print(f"Expected /, got {cur} at pos {idx}")
                 return None
 
             idx += 1
@@ -213,7 +210,7 @@ def tokenise(fmla: str) -> list[Token] | None:
             if peek(idx) == '>':
                 tokens.append(Token(Tokens.IMPLIES, '->'))
             else:
-                print(f"Expected >, got {cur} at pos {idx}")
+                # print(f"Expected >, got {cur} at pos {idx}")
                 return None
 
             idx += 1
@@ -231,7 +228,7 @@ def tokenise(fmla: str) -> list[Token] | None:
         elif cur == ',':
             tokens.append(Token(Tokens.COMMA, ','))
         else:
-            print(f"Unexpected char{cur}")
+            # print(f"Unexpected char{cur}")
             return None
 
         idx += 1
@@ -244,137 +241,138 @@ class Parser:
         self.tokens: list[Token] = tokens
         self.len: int = len(tokens)
         self.valid: bool = True
+        self.isFOL: bool = False
         self.ast: ASTNode = self.parse()
         if self.idx < self.len:
-            print(f"Parsing complete, but idx at {self.idx}, less than {self.len}")
+            # print(f"Parsing complete, but idx at {self.idx}, less than {self.len}")
             self.valid = False
-        self.isFOL: bool = False
 
-    def peek(self) -> Token | None:
+    def peek(self):
         if self.idx + 1 >= self.len:
             return None
 
         return self.tokens[self.idx + 1]
 
-    def consume(self, count: int = 1) -> None:
+    def consume(self, count: int = 1):
         self.idx += count
 
 
-    def match(self, token: int) -> bool:
+    def match(self, token: int):
         if self.idx >= self.len:
-            print("Unexpected EOF")
+            # print("Unexpected EOF")
             self.valid = False
             return False
         return self.tokens[self.idx].tokenType == token
 
 
-    def match_peek(self, token: int) -> bool:
+    def match_peek(self, token: int):
         peek = self.peek()
         if self.idx >= self.len or peek is None:
-            print("Unexpected EOF")
+            # print("Unexpected EOF")
             self.valid = False
             return False
 
         return peek.tokenType == token
 
 
-    def parse(self) -> ASTNode:
+    def parse(self):
         if (self.idx >= self.len):
-            print("Unexpected EOF")
+            # print("Unexpected EOF")
             self.valid = False
             return ASTNode(0)
         cur = self.tokens[self.idx]
         # print(f"idx: {self.idx} cur: {cur}")
 
-        match (cur.tokenType):
-            case Tokens.NEGATION:
-                self.consume()
-                res = self.parse()
-                return NegationNode(res, cur.token + res.fullStr)
+        if cur.tokenType == Tokens.NEGATION:
+            self.consume()
+            res = self.parse()
+            return NegationNode(res, cur.token + res.fullStr)
 
-            case Tokens.EXIST | Tokens.FORALL:
-                if not self.match_peek(Tokens.VAR):
-                    print(f"Expected VAR, got {self.peek()}")
-                    self.valid = False
-                    return ASTNode(0)
-
-                var = self.peek()
-                assert(var is not None)
-
-                self.isFOL = True
-
-                self.consume(2)
-                quantifier = Quantifier.EXISTS if cur.tokenType == Tokens.EXIST else Quantifier.FORALL
-                res = self.parse()
-                return QuantifierNode(quantifier, res, var.token, cur.token + var.token + res.fullStr)
-
-            case Tokens.OPEN_PAREN:
-                self.consume()
-                lhs = self.parse()
-
-                connective = self.tokens[self.idx]
-                connectives = [Tokens.OR, Tokens.AND, Tokens.IMPLIES]
-
-                if connective.tokenType not in connectives:
-                    print(f"Expected connective, got {connective}")
-                    self.valid = False
-                    return ASTNode(0)
-
-                self.consume()
-                rhs = self.parse()
-
-                if not self.match(Tokens.CLOSE_PAREN):
-                    print(f"Expected CLOSE_PAREN, got {self.peek()}")
-                    self.valid = False
-                    return ASTNode(0)
-
-                self.consume()
-
-                return ConnectiveNode(lhs, connective, rhs, 
-                    cur.token + lhs.fullStr + connective.token + rhs.fullStr + ')'
-                )
-
-            case Tokens.PRED:
-                peek = self.peek()
-                if peek is None or peek.tokenType != Tokens.OPEN_PAREN:
-                    self.valid = False
-                    print(f"Expected OPEN_PAREN, got {peek}")
-                    return ASTNode(0)
-
-                self.consume()
-
-                s = f"{cur.token}("
-
-                args: list[ASTNode] = []
-
-                while True:
-                    self.consume()
-                    res = self.parse()
-                    args.append(res)
-                    s += res.fullStr
-                    if self.tokens[self.idx].tokenType == Tokens.COMMA:
-                        s += ','
-                        continue
-                    break
-
-                if not self.match(Tokens.CLOSE_PAREN):
-                    self.valid = False
-                    print(f"Expected CLOSE_PAREN (PRED), got {self.tokens[self.idx]}")
-                    return ASTNode(0)
-
-                self.consume()
-                s += ')'
-
-                return PredNode(args, cur.token[0],s)
-
-            case Tokens.PROP | Tokens.VAR:
-                self.consume()
-                return AtomNode(cur.tokenType, cur.token)
-
-            case _:
-                print(f"Unexpected token: {cur}")
+        elif cur.tokenType == Tokens.EXIST or cur.tokenType == Tokens.FORALL:
+            if not self.match_peek(Tokens.VAR):
+                # print(f"Expected VAR, got {self.peek()}")
                 self.valid = False
                 return ASTNode(0)
+
+            var = self.peek()
+            assert(var is not None)
+
+
+            self.isFOL = True
+            # print("fol", self.isFOL)
+
+            self.consume(2)
+            quantifier = Quantifier.EXISTS if cur.tokenType == Tokens.EXIST else Quantifier.FORALL
+            res = self.parse()
+            return QuantifierNode(quantifier, res, var.token, cur.token + var.token + res.fullStr)
+
+        elif cur.tokenType == Tokens.OPEN_PAREN:
+            self.consume()
+            lhs = self.parse()
+
+            connective = self.tokens[self.idx]
+            connectives = [Tokens.OR, Tokens.AND, Tokens.IMPLIES]
+
+            if connective.tokenType not in connectives:
+                # print(f"Expected connective, got {connective}")
+                self.valid = False
+                return ASTNode(0)
+
+            self.consume()
+            rhs = self.parse()
+
+            if not self.match(Tokens.CLOSE_PAREN):
+                # print(f"Expected CLOSE_PAREN, got {self.peek()}")
+                self.valid = False
+                return ASTNode(0)
+
+            self.consume()
+
+            return ConnectiveNode(lhs, connective, rhs, 
+                cur.token + lhs.fullStr + connective.token + rhs.fullStr + ')'
+            )
+
+        elif cur.tokenType == Tokens.PRED:
+            peek = self.peek()
+            if peek is None or peek.tokenType != Tokens.OPEN_PAREN:
+                self.valid = False
+                # print(f"Expected OPEN_PAREN, got {peek}")
+                return ASTNode(0)
+
+            self.consume()
+
+            s = f"{cur.token}("
+
+            args: list[ASTNode] = []
+
+            while True:
+                self.consume()
+                res = self.parse()
+                args.append(res)
+                s += res.fullStr
+                if self.tokens[self.idx].tokenType == Tokens.COMMA:
+                    s += ','
+                    continue
+                break
+
+            if not self.match(Tokens.CLOSE_PAREN):
+                self.valid = False
+                # print(f"Expected CLOSE_PAREN (PRED), got {self.tokens[self.idx]}")
+                return ASTNode(0)
+
+            self.consume()
+            s += ')'
+
+            return PredNode(args, cur.token[0],s)
+
+        elif cur.tokenType == Tokens.PROP or cur.tokenType == Tokens.VAR:
+            self.consume()
+            return AtomNode(cur.tokenType, cur.token)
+
+        else:
+            # print(f"Unexpected token: {cur}")
+            self.valid = False
+            return ASTNode(0)
 
 
 
@@ -386,38 +384,71 @@ def parse(fmla: str):
         return ParseOutputs.NOT_FORMULA
 
     parser = Parser(tokens)
+    # print(f"parser{parser.isFOL}")
 
     if not parser.valid:
         return ParseOutputs.NOT_FORMULA
 
-    match parser.ast.nodeType:
-        case ASTNodeType.NEGATION:
-            if parser.isFOL:
-                return ParseOutputs.FOL_NEGATION
-            return ParseOutputs.PROP_NEGATION
-        case ASTNodeType.QUANTIFIED:
-            assert(isinstance(parser.ast, QuantifierNode))
+    node_type = parser.ast.nodeType
 
-            if parser.ast.quantifier == Quantifier.FORALL:
-                return ParseOutputs.UNI_QUANTIFIED
-            return ParseOutputs.EXS_QUANTIFIED
-        case ASTNodeType.CONNECTIVE:
-            if parser.isFOL:
-                return ParseOutputs.BIN_FOL
-            return ParseOutputs.BIN_PROP
+    if node_type == ASTNodeType.NEGATION:
+        if parser.isFOL:
+            return ParseOutputs.FOL_NEGATION
+        return ParseOutputs.PROP_NEGATION
 
-        case ASTNodeType.ATOM:
-            assert(isinstance(parser.ast, AtomNode))
+    elif node_type == ASTNodeType.QUANTIFIED:
+        assert isinstance(parser.ast, QuantifierNode)
 
-            if parser.ast.token == Tokens.PROP:
-                return ParseOutputs.PROPOSITION
+        if parser.ast.quantifier == Quantifier.FORALL:
+            return ParseOutputs.UNI_QUANTIFIED
+        return ParseOutputs.EXS_QUANTIFIED
 
-            return ParseOutputs.NOT_FORMULA
-        case ASTNodeType.PRED:
-            return ParseOutputs.ATOM
+    elif node_type == ASTNodeType.CONNECTIVE:
+        if parser.isFOL:
+            return ParseOutputs.BIN_FOL
+        return ParseOutputs.BIN_PROP
 
-        case _:
-            return ParseOutputs.NOT_FORMULA
+    elif node_type == ASTNodeType.ATOM:
+        assert isinstance(parser.ast, AtomNode)
+
+        if parser.ast.token == Tokens.PROP:
+            return ParseOutputs.PROPOSITION
+        return ParseOutputs.NOT_FORMULA
+
+    elif node_type == ASTNodeType.PRED:
+        return ParseOutputs.ATOM
+
+    else:
+        return ParseOutputs.NOT_FORMULA
+
+    # match parser.ast.nodeType:
+    #     case ASTNodeType.NEGATION:
+    #         if parser.isFOL:
+    #             return ParseOutputs.FOL_NEGATION
+    #         return ParseOutputs.PROP_NEGATION
+    #     case ASTNodeType.QUANTIFIED:
+    #         assert(isinstance(parser.ast, QuantifierNode))
+    #
+    #         if parser.ast.quantifier == Quantifier.FORALL:
+    #             return ParseOutputs.UNI_QUANTIFIED
+    #         return ParseOutputs.EXS_QUANTIFIED
+    #     case ASTNodeType.CONNECTIVE:
+    #         if parser.isFOL:
+    #             return ParseOutputs.BIN_FOL
+    #         return ParseOutputs.BIN_PROP
+    #
+    #     case ASTNodeType.ATOM:
+    #         assert(isinstance(parser.ast, AtomNode))
+    #
+    #         if parser.ast.token == Tokens.PROP:
+    #             return ParseOutputs.PROPOSITION
+    #
+    #         return ParseOutputs.NOT_FORMULA
+    #     case ASTNodeType.PRED:
+    #         return ParseOutputs.ATOM
+    #
+    #     case _:
+    #         return ParseOutputs.NOT_FORMULA
 
 
 # Return the LHS of a binary connective formula
@@ -452,7 +483,7 @@ def rhs(fmla):
 
 
 class TablaeuTree:
-    def __init__(self, node: ASTNode | None) -> None:
+    def __init__(self, node) -> None:
         self.nodes: list[ASTNode] = [] # Maybe use a tablaeu node? but we don't need to store if it's checked - simply not push
         self.posLiterals: list[ASTNode] = []
         self.negLiterals: list[ASTNode] = []
@@ -550,7 +581,8 @@ def theory(fmla: str):#initialise a theory with a single formula in it
 def replace(original: str, to: str, node: ASTNode):
     if isinstance(node, AtomNode) and node.fullStr == original:
         if node.token != Tokens.VAR:
-            print("wtf")
+            pass
+            # print("wtf")
         node.fullStr = to
 
     elif isinstance(node, PredNode):
@@ -566,7 +598,8 @@ def replace(original: str, to: str, node: ASTNode):
 
     elif isinstance(node, QuantifierNode):
         if node.var == original:
-            print(f"Replacing {original} with {to}, but variable reencounted as quantifier {node}?")
+            pass
+            # print(f"Replacing {original} with {to}, but variable reencounted as quantifier {node}?")
 
         # replace(original, to, node.fmla)
 
